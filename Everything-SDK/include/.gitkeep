@@ -1,0 +1,8 @@
+# Include Directory
+
+Place Everything SDK header files here (optional):
+
+- Everything.h (C/C++ header file)
+- Everything.lib (import library)
+
+Download from: https://www.voidtools.com/support/everything/sdk/
