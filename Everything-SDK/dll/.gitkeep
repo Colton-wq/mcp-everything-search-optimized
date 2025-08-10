@@ -1,0 +1,8 @@
+# DLL Directory
+
+Place Everything SDK DLL files here:
+
+- Everything64.dll (required for 64-bit Windows)
+- Everything32.dll (optional for 32-bit Windows)
+
+Download from: https://www.voidtools.com/support/everything/sdk/
