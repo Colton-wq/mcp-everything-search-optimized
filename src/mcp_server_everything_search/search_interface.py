@@ -21,10 +21,9 @@ class SearchResult:
     accessed: Optional[datetime] = None
     attributes: Optional[str] = None
 
-class SearchProvider(abc.ABC):
-    """Abstract base class for platform-specific search implementations."""
+class SearchProvider:
+    """Concrete search provider that handles all platforms."""
     
-    @abc.abstractmethod
     def search_files(
         self,
         query: str,
@@ -36,18 +35,13 @@ class SearchProvider(abc.ABC):
         sort_by: Optional[int] = None
     ) -> List[SearchResult]:
         """Execute a file search using platform-specific methods."""
-        pass
-
-    @classmethod
-    def get_provider(cls) -> 'SearchProvider':
-        """Factory method to get the appropriate search provider for the current platform."""
         system = platform.system().lower()
         if system == 'darwin':
-            return MacSearchProvider()
+            return self._search_macos(query, max_results, match_path, match_case, match_whole_word, match_regex, sort_by)
         elif system == 'linux':
-            return LinuxSearchProvider()
+            return self._search_linux(query, max_results, match_path, match_case, match_whole_word, match_regex, sort_by)
         elif system == 'windows':
-            return WindowsSearchProvider()
+            return self._search_windows(query, max_results, match_path, match_case, match_whole_word, match_regex, sort_by)
         else:
             raise NotImplementedError(f"No search provider available for {system}")
 
@@ -72,10 +66,7 @@ class SearchProvider(abc.ABC):
                 filename=os.path.basename(path)
             )
 
-class MacSearchProvider(SearchProvider):
-    """macOS search implementation using mdfind."""
-    
-    def search_files(
+    def _search_macos(
         self,
         query: str,
         max_results: int = 100,
@@ -85,6 +76,7 @@ class MacSearchProvider(SearchProvider):
         match_regex: bool = False,
         sort_by: Optional[int] = None
     ) -> List[SearchResult]:
+        """macOS search implementation using mdfind."""
         try:
             # Build mdfind command
             cmd = ['mdfind']
@@ -106,25 +98,32 @@ class MacSearchProvider(SearchProvider):
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Search failed: {e}")
 
-class LinuxSearchProvider(SearchProvider):
-    """Linux search implementation using locate/plocate."""
-
-    def __init__(self):
-        """Check if locate/plocate is installed and the database is ready."""
-        self.locate_cmd = None
-        self.locate_type = None
+    def _search_linux(
+        self,
+        query: str,
+        max_results: int = 100,
+        match_path: bool = False,
+        match_case: bool = False,
+        match_whole_word: bool = False,
+        match_regex: bool = False,
+        sort_by: Optional[int] = None
+    ) -> List[SearchResult]:
+        """Linux search implementation using locate/plocate."""
+        # Check for available locate command
+        locate_cmd = None
+        locate_type = None
 
         # Check for plocate first (newer version)
         plocate_check = subprocess.run(['which', 'plocate'], capture_output=True)
         if plocate_check.returncode == 0:
-            self.locate_cmd = 'plocate'
-            self.locate_type = 'plocate'
+            locate_cmd = 'plocate'
+            locate_type = 'plocate'
         else:
             # Check for mlocate
             mlocate_check = subprocess.run(['which', 'locate'], capture_output=True)
             if mlocate_check.returncode == 0:
-                self.locate_cmd = 'locate'
-                self.locate_type = 'mlocate'
+                locate_cmd = 'locate'
+                locate_type = 'mlocate'
             else:
                 raise RuntimeError(
                     "Neither 'locate' nor 'plocate' is installed. Please install one:\n"
@@ -137,14 +136,42 @@ class LinuxSearchProvider(SearchProvider):
                     "For mlocate: sudo /etc/cron.daily/mlocate"
                 )
 
-    def _update_database(self):
-        """Update the locate database."""
-        if self.locate_type == 'plocate':
-            subprocess.run(['sudo', 'updatedb'], check=True)
-        else:  # mlocate
-            subprocess.run(['sudo', '/etc/cron.daily/mlocate'], check=True)
-    
-    def search_files(
+        try:
+            # Build locate command
+            cmd = [locate_cmd]
+            if not match_case:
+                cmd.append('-i')
+            if match_regex:
+                cmd.append('--regex' if locate_type == 'mlocate' else '-r')
+            cmd.append(query)
+            
+            # Execute search
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                error_msg = result.stderr.lower()
+                if "no such file or directory" in error_msg or "database" in error_msg:
+                    raise RuntimeError(
+                        f"The {locate_type} database needs to be created. "
+                        f"Please run: sudo updatedb"
+                    )
+                raise RuntimeError(f"{locate_cmd} failed: {result.stderr}")
+
+            # Process results
+            paths = result.stdout.splitlines()[:max_results]
+            return [self._convert_path_to_result(path) for path in paths]
+            
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"The {locate_cmd} command disappeared. Please reinstall:\n"
+                "Ubuntu/Debian: sudo apt-get install plocate\n"
+                "              or\n"
+                "              sudo apt-get install mlocate\n"
+                "Fedora: sudo dnf install mlocate"
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Search failed: {e}")
+
+    def _search_windows(
         self,
         query: str,
         max_results: int = 100,
@@ -154,47 +181,7 @@ class LinuxSearchProvider(SearchProvider):
         match_regex: bool = False,
         sort_by: Optional[int] = None
     ) -> List[SearchResult]:
-        try:
-            # Build locate command
-            cmd = [self.locate_cmd]
-            if not match_case:
-                cmd.append('-i')
-            if match_regex:
-                cmd.append('--regex' if self.locate_type == 'mlocate' else '-r')
-            cmd.append(query)
-            
-            # Execute search
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                error_msg = result.stderr.lower()
-                if "no such file or directory" in error_msg or "database" in error_msg:
-                    raise RuntimeError(
-                        f"The {self.locate_type} database needs to be created. "
-                        f"Please run: sudo updatedb"
-                    )
-                raise RuntimeError(f"{self.locate_cmd} failed: {result.stderr}")
-
-            # Process results
-            paths = result.stdout.splitlines()[:max_results]
-            return [self._convert_path_to_result(path) for path in paths]
-            
-        except FileNotFoundError:
-            raise RuntimeError(
-                f"The {self.locate_cmd} command disappeared. Please reinstall:\n"
-                "Ubuntu/Debian: sudo apt-get install plocate\n"
-                "              or\n"
-                "              sudo apt-get install mlocate\n"
-                "Fedora: sudo dnf install mlocate"
-            )
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Search failed: {e}")
-
-
-class WindowsSearchProvider(SearchProvider):
-    """Windows search implementation using Everything SDK."""
-    
-    def __init__(self):
-        """Initialize Everything SDK."""
+        """Windows search implementation using Everything SDK."""
         import os
         from .everything_sdk import EverythingSDK
 
@@ -204,24 +191,14 @@ class WindowsSearchProvider(SearchProvider):
         default_dll_path = os.path.normpath(default_dll_path)
 
         dll_path = os.getenv('EVERYTHING_SDK_PATH', default_dll_path)
-        self.everything_sdk = EverythingSDK(dll_path)
+        everything_sdk = EverythingSDK(dll_path)
 
-    def search_files(
-        self,
-        query: str,
-        max_results: int = 100,
-        match_path: bool = False,
-        match_case: bool = False,
-        match_whole_word: bool = False,
-        match_regex: bool = False,
-        sort_by: Optional[int] = None
-    ) -> List[SearchResult]:
         # Replace double backslashes with single backslashes
         query = query.replace("\\\\", "\\")
-        # If the query.query contains forward slashes, replace them with backslashes
+        # If the query contains forward slashes, replace them with backslashes
         query = query.replace("/", "\\")
 
-        return self.everything_sdk.search_files(
+        return everything_sdk.search_files(
             query=query,
             max_results=max_results,
             match_path=match_path,
