@@ -34,8 +34,16 @@ An optimized MCP server that provides fast file searching capabilities across Wi
 ### Prerequisites
 
 #### Windows
-- [Everything search utility](https://www.voidtools.com/) (service running)
-- [Everything SDK](https://www.voidtools.com/support/everything/sdk/) (extracted)
+1. **Everything Search Application**:
+   - Download and install from: https://www.voidtools.com/
+   - Ensure the Everything service is running
+   - Let Everything index your drives (first-time setup)
+
+2. **Everything SDK Setup**:
+   - Download Everything SDK from: https://www.voidtools.com/support/everything/sdk/
+   - Extract the SDK package
+   - Copy `Everything64.dll` to `Everything-SDK/dll/` in the project directory
+   - Or set environment variable: `EVERYTHING_SDK_PATH=C:\\path\\to\\Everything64.dll`
 
 #### Linux
 ```bash
@@ -56,12 +64,23 @@ No additional setup required (uses built-in Spotlight).
 
 ### Install via uv (Recommended)
 ```bash
-uvx mcp-server-everything-search
+uvx mcp-server-everything-search-optimized
 ```
 
 ### Install via pip
 ```bash
-pip install mcp-server-everything-search
+pip install mcp-server-everything-search-optimized
+```
+
+### Install from Source
+```bash
+git clone https://github.com/Colton-wq/mcp-everything-search-optimized.git
+cd mcp-everything-search-optimized
+
+# Setup Everything SDK (Windows only)
+# Download Everything SDK and copy Everything64.dll to Everything-SDK/dll/
+
+pip install -e .
 ```
 
 ## ⚙️ Configuration
@@ -74,7 +93,7 @@ pip install mcp-server-everything-search
   \"mcpServers\": {
     \"everything-search\": {
       \"command\": \"uvx\",
-      \"args\": [\"mcp-server-everything-search\"],
+      \"args\": [\"mcp-server-everything-search-optimized\"],
       \"env\": {
         \"EVERYTHING_SDK_PATH\": \"path/to/Everything-SDK/dll/Everything64.dll\"
       }
@@ -89,7 +108,7 @@ pip install mcp-server-everything-search
   \"mcpServers\": {
     \"everything-search\": {
       \"command\": \"uvx\",
-      \"args\": [\"mcp-server-everything-search\"]
+      \"args\": [\"mcp-server-everything-search-optimized\"]
     }
   }
 }
@@ -159,6 +178,10 @@ python -m pytest
   \"accessed\": \"2025-08-10T12:00:00Z\"
 }
 ```
+
+### Search Syntax Guide
+
+For detailed information about the search syntax supported on each platform (Windows, macOS, and Linux), please see [SEARCH_SYNTAX.md](SEARCH_SYNTAX.md).
 
 ## 🐛 Known Issues & Fixes
 
